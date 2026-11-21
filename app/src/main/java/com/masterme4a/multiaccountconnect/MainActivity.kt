@@ -1,12 +1,15 @@
 package com.masterme4a.multiaccountconnect
 
 import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.os.UserManager
+import android.os.Process
+import android.os.UserHandle
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -20,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private val muted = Color.rgb(174, 163, 194)
     private val white = Color.WHITE
     private val prefs by lazy { getSharedPreferences("multivm_profiles", MODE_PRIVATE) }
+    private val launcherPackage = "git.artdeell.mjlaunch"
     private val names = MutableList<String?>(3) { null }
     private var selectedSlot = 0
     private lateinit var content: LinearLayout
@@ -116,21 +120,23 @@ class MainActivity : ComponentActivity() {
         spacerIn(summary, 5)
         summary.addView(label("Выбор здесь сохраняет никнейм и слот. Сам вход Microsoft/Ely.by меняется внутри MJLauncher.", 12f, muted))
         spacerIn(summary, 12)
-        summary.addView(button("Открыть MJLauncher", true) { openLauncher() })
+        summary.addView(button("АККАУНТ 1 • Обычный MJLauncher", true) { openLauncher() })
+        spacerIn(summary, 9)
+        summary.addView(button("АККАУНТ 2 • MJLauncher в Island", false) { openWorkLauncher() })
         content.addView(summary)
         spacer(20)
         val env = card()
-        val managed = try { (getSystemService(USER_SERVICE) as UserManager).isManagedProfile } catch (_: Exception) { false }
         val installed = try {
             @Suppress("DEPRECATION")
-            packageManager.getApplicationInfo("git.artdeell.mjlaunch", 0)
+            packageManager.getApplicationInfo(launcherPackage, 0)
             true
         } catch (_: Exception) { false }
+        val workInstalled = findWorkLauncher() != null
         env.addView(label("СОСТОЯНИЕ УСТРОЙСТВА", 11f, purple, true))
         spacerIn(env, 7)
-        env.addView(label(if (managed) "Рабочая среда Android" else "Обычная среда Android", 15f, white, true))
+        env.addView(label(if (installed) "Основной MJLauncher: найден" else "Основной MJLauncher: не найден", 14f, white, true))
         spacerIn(env, 4)
-        env.addView(label(if (installed) "MJLauncher найден" else "MJLauncher не найден — установи его из Google Play", 12f, muted))
+        env.addView(label(if (workInstalled) "Island: MJLauncher найден" else "Island: профиль или MJLauncher не обнаружен", 12f, if (workInstalled) purple else muted))
         content.addView(env)
         spacer(20)
         val title = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -205,7 +211,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openLauncher() {
-        val intent = packageManager.getLaunchIntentForPackage("git.artdeell.mjlaunch")
+        val intent = packageManager.getLaunchIntentForPackage(launcherPackage)
         if (intent == null) {
             AlertDialog.Builder(this).setTitle("MJLauncher не найден")
                 .setMessage("Установи MJLauncher из Google Play и попробуй снова.")
@@ -218,6 +224,44 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             AlertDialog.Builder(this).setMessage("Не удалось открыть MJLauncher.")
                 .setPositiveButton("OK", null).show()
+        }
+    }
+
+    private fun findWorkLauncher(): Pair<UserHandle, ComponentName>? {
+        return try {
+            val launcherApps = getSystemService(LauncherApps::class.java)
+            val currentUser = Process.myUserHandle()
+            launcherApps.getProfiles()
+                .firstOrNull { it != currentUser }
+                ?.let { profile ->
+                    launcherApps.getActivityList(launcherPackage, profile)
+                        .firstOrNull()
+                        ?.let { Pair(profile, it.componentName) }
+                }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun openWorkLauncher() {
+        val target = findWorkLauncher()
+        if (target == null) {
+            AlertDialog.Builder(this)
+                .setTitle("MJLauncher в Island не найден")
+                .setMessage("Открой Island, перейди во вкладку ISLAND и убедись, что MJLauncher установлен и рабочий профиль включён. Затем вернись сюда.")
+                .setPositiveButton("Понятно", null)
+                .show()
+            return
+        }
+        try {
+            val launcherApps = getSystemService(LauncherApps::class.java)
+            launcherApps.startMainActivity(target.second, target.first, null, null)
+        } catch (_: Exception) {
+            AlertDialog.Builder(this)
+                .setTitle("Не удалось открыть второй профиль")
+                .setMessage("Android не разрешил запуск через Island. Запусти второй MJLauncher напрямую из вкладки ISLAND приложения Island.")
+                .setPositiveButton("Понятно", null)
+                .show()
         }
     }
 
