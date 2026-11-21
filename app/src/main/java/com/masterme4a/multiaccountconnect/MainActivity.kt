@@ -2,7 +2,6 @@ package com.masterme4a.multiaccountconnect
 
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,7 +9,6 @@ import android.os.Bundle
 import android.os.UserManager
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
 
@@ -21,14 +19,16 @@ class MainActivity : ComponentActivity() {
     private val purple = Color.rgb(157, 91, 255)
     private val muted = Color.rgb(174, 163, 194)
     private val white = Color.WHITE
-    private val names = mutableListOf<String>()
+    private val prefs by lazy { getSharedPreferences("multivm_profiles", MODE_PRIVATE) }
+    private val names = MutableList<String?>(3) { null }
+    private var selectedSlot = 0
     private lateinit var content: LinearLayout
     private lateinit var profileRows: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        names.addAll(getSharedPreferences("account_names", MODE_PRIVATE)
-            .getStringSet("names", emptySet())?.toList()?.sorted() ?: emptyList())
+        for (i in 0..2) names[i] = prefs.getString("slot_${i + 1}", null)
+        selectedSlot = prefs.getInt("selected_slot", 0).coerceIn(0, 2)
         buildShell()
         showProfiles()
     }
@@ -77,8 +77,7 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(22, 17, 33))
         }
         nav.addView(button("Профили", true) { showProfiles() }, LinearLayout.LayoutParams(0, -2, 1f))
-        val gap = View(this)
-        nav.addView(gap, LinearLayout.LayoutParams(10, 1))
+        nav.addView(View(this), LinearLayout.LayoutParams(10, 1))
         nav.addView(button("Настройки", false) { showSettings() }, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(nav)
         setContentView(root)
@@ -86,35 +85,21 @@ class MainActivity : ComponentActivity() {
 
     private fun header(subtitle: String) {
         content.removeAllViews()
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         brand.addView(label("MASTERME4A", 12f, purple, true))
         brand.addView(label("MultiVM", 30f, white, true))
         brand.addView(label(subtitle, 13f, muted))
         top.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        val badge = label("BETA", 11f, white, true).apply {
-            setPadding(12, 8, 12, 8)
-            background = rounded(Color.rgb(79, 48, 119), 30f)
-        }
-        top.addView(badge)
+        top.addView(label("BETA", 11f, white, true).apply {
+            setPadding(12, 8, 12, 8); background = rounded(Color.rgb(79, 48, 119), 30f)
+        })
         content.addView(top)
         spacer(22)
     }
 
-    private fun spacer(height: Int) {
-        content.addView(View(this), LinearLayout.LayoutParams(1, height))
-    }
-
-    private fun sectionTitle(title: String, trailing: String? = null) {
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        row.addView(label(title, 18f, white, true), LinearLayout.LayoutParams(0, -2, 1f))
-        if (trailing != null) row.addView(label(trailing, 12f, muted))
-        content.addView(row)
-        spacer(12)
-    }
+    private fun spacer(height: Int) { content.addView(View(this), LinearLayout.LayoutParams(1, height)) }
+    private fun spacerIn(parent: LinearLayout, height: Int) { parent.addView(View(this), LinearLayout.LayoutParams(1, height)) }
 
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -123,135 +108,103 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showProfiles() {
-        header("Три слота профилей Minecraft")
+        header("Быстрый выбор профиля")
         val summary = card()
-        summary.addView(label("ТВОИ ПРОФИЛИ", 11f, purple, true))
-        spacerIn(summary, 6)
-        summary.addView(label("Управляй никами и запускай MJLauncher.", 16f, white, true))
+        summary.addView(label("АКТИВНЫЙ СЛОТ", 11f, purple, true))
+        spacerIn(summary, 7)
+        summary.addView(label(names[selectedSlot] ?: "Профиль ${selectedSlot + 1} не настроен", 19f, white, true))
         spacerIn(summary, 5)
-        summary.addView(label("Пока это отдельные карточки, а не изолированные копии лаунчера.", 12f, muted))
+        summary.addView(label("Выбор здесь сохраняет никнейм и слот. Сам вход Microsoft/Ely.by меняется внутри MJLauncher.", 12f, muted))
+        spacerIn(summary, 12)
+        summary.addView(button("Открыть MJLauncher", true) { openLauncher() })
         content.addView(summary)
+        spacer(20)
+        val env = card()
+        val managed = try { (getSystemService(USER_SERVICE) as UserManager).isManagedProfile } catch (_: Exception) { false }
+        val installed = try {
+            @Suppress("DEPRECATION")
+            packageManager.getApplicationInfo("git.artdeell.mjlaunch", 0)
+            true
+        } catch (_: Exception) { false }
+        env.addView(label("СОСТОЯНИЕ УСТРОЙСТВА", 11f, purple, true))
+        spacerIn(env, 7)
+        env.addView(label(if (managed) "Рабочая среда Android" else "Обычная среда Android", 15f, white, true))
+        spacerIn(env, 4)
+        env.addView(label(if (installed) "MJLauncher найден" else "MJLauncher не найден — установи его из Google Play", 12f, muted))
+        content.addView(env)
+        spacer(20)
+        val title = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        title.addView(label("Три профиля", 18f, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        title.addView(label("Слот ${selectedSlot + 1} выбран", 12f, muted))
+        content.addView(title)
         spacer(12)
-        content.addView(environmentCard())
-        spacer(22)
-        sectionTitle("Профили", "3 слота")
         profileRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(profileRows)
         renderProfiles()
         spacer(16)
-        content.addView(button("+ Добавить никнейм", true) { addNickname() })
-        spacer(18)
-        val note = card()
-        note.addView(label("ВАЖНО О ЗАПУСКЕ", 11f, purple, true))
-        spacerIn(note, 7)
-        note.addView(label("Android пока открывает установленный MJLauncher как одно приложение. Кнопка запуска не создаёт отдельную копию и не разделяет данные аккаунтов.", 13f, muted))
-        content.addView(note)
-    }
-
-    private fun environmentCard(): LinearLayout {
-        val card = card()
-        val managed = try {
-            (getSystemService(USER_SERVICE) as UserManager).isManagedProfile
-        } catch (_: Exception) {
-            false
-        }
-        val launcherInstalled = try {
-            @Suppress("DEPRECATION")
-            packageManager.getApplicationInfo("git.artdeell.mjlaunch", 0)
-            true
-        } catch (_: Exception) {
-            false
-        }
-        card.addView(label("ТЕКУЩАЯ СРЕДА ANDROID", 11f, purple, true))
-        spacerIn(card, 7)
-        card.addView(label(if (managed) "Рабочий профиль" else "Личный профиль", 16f, white, true))
-        spacerIn(card, 4)
-        card.addView(label(
-            if (launcherInstalled) "MJLauncher установлен в этой среде." else "MJLauncher не найден в этой среде.",
-            12f, muted
-        ))
-        spacerIn(card, 10)
-        card.addView(button("Как включить второй профиль", false) {
+        content.addView(button("Как это работает", false) {
             AlertDialog.Builder(this)
-                .setTitle("Второй экземпляр MJLauncher")
-                .setMessage(
-                    "Для отдельного хранилища нужен рабочий профиль Android. " +
-                    "Его можно попробовать создать через Shelter или Island, если устройство разрешает рабочие профили. " +
-                    "Затем установи MJLauncher и Masterme4a MultiVM внутри рабочего профиля. " +
-                    "Открой это приложение в каждом профиле: личный и рабочий профили будут иметь отдельные данные. " +
-                    "Это даст максимум два проверяемых окружения, а не три. Возможность одновременного запуска зависит от Android и памяти телефона."
-                )
-                .setPositiveButton("Понятно", null)
-                .show()
+                .setTitle("Переключение аккаунтов")
+                .setMessage("MultiVM хранит три подписи/никнейма и запоминает выбранный слот. Он не получает пароли или токены и пока не может менять авторизованный аккаунт внутри MJLauncher автоматически. Выбери нужную учётную запись в самом MJLauncher. Чтобы не прерывать игру, не открывай лаунчер во время активной игровой сессии: Android может переключить приложение на передний план.")
+                .setPositiveButton("Понятно", null).show()
         })
-        return card
-    }
-
-    private fun spacerIn(parent: LinearLayout, height: Int) {
-        parent.addView(View(this), LinearLayout.LayoutParams(1, height))
     }
 
     private fun renderProfiles() {
         profileRows.removeAllViews()
-        for (slot in 1..3) {
-            val name = names.getOrNull(slot - 1)
+        for (slot in 0..2) {
+            val name = names[slot]
+            val active = slot == selectedSlot
             val item = card()
             val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            val number = label("0$slot", 20f, purple, true).apply {
+            row.addView(label("0${slot + 1}", 20f, purple, true).apply {
                 gravity = Gravity.CENTER
                 background = rounded(Color.rgb(54, 37, 78), 15f)
                 setPadding(13, 12, 13, 12)
-            }
-            row.addView(number)
-            val info = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(12, 0, 0, 0)
-            }
-            info.addView(label(name ?: "Профиль не настроен", 15f, white, true))
-            info.addView(label(if (name == null) "Добавь никнейм в этот слот" else "Сохранённый никнейм", 12f, muted))
+            })
+            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 0, 0, 0) }
+            info.addView(label(name ?: "Профиль ${slot + 1}", 15f, white, true))
+            info.addView(label(if (active) "Выбран сейчас" else if (name == null) "Никнейм не задан" else "Сохранённый никнейм", 12f, if (active) purple else muted))
             row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
             item.addView(row)
-            spacerIn(item, 14)
-            item.addView(button(if (name == null) "Добавить никнейм" else "Открыть MJLauncher", true) {
-                if (name == null) addNickname() else openLauncher(slot)
-            })
+            spacerIn(item, 12)
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            actions.addView(button(if (active) "Выбран" else "Выбрать", !active) {
+                selectedSlot = slot
+                prefs.edit().putInt("selected_slot", selectedSlot).apply()
+                showProfiles()
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            actions.addView(View(this), LinearLayout.LayoutParams(8, 1))
+            actions.addView(button(if (name == null) "Добавить ник" else "Изменить", false) { editNickname(slot) },
+                LinearLayout.LayoutParams(0, -2, 1f))
+            item.addView(actions)
             profileRows.addView(item)
-            if (slot != 3) spacer(12)
+            if (slot < 2) spacer(10)
         }
     }
 
-    private fun addNickname() {
+    private fun editNickname(slot: Int) {
         val input = EditText(this).apply {
             hint = "Например, Player123"
             setSingleLine(true)
+            setText(names[slot] ?: "")
         }
         AlertDialog.Builder(this)
-            .setTitle("Добавить профиль")
-            .setMessage("Никнейм будет сохранён в карточке приложения.")
+            .setTitle("Профиль ${slot + 1}")
+            .setMessage("Сохраняется только подпись для удобства. Пароль и вход в аккаунт здесь не хранятся.")
             .setView(input)
             .setPositiveButton("Сохранить") { _, _ ->
                 val value = input.text.toString().trim()
-                if (value.isNotEmpty() && value.length <= 32 && !names.contains(value)) {
-                    if (names.size < 3) {
-                        names.add(value)
-                        saveNames()
-                        showProfiles()
-                    } else {
-                        AlertDialog.Builder(this).setMessage("Все три слота заняты. Удали никнейм в настройках, чтобы заменить его.")
-                            .setPositiveButton("OK", null).show()
-                    }
-                }
+                if (value.isEmpty()) names[slot] = null
+                else if (value.length <= 32) names[slot] = value
+                prefs.edit().putString("slot_${slot + 1}", names[slot]).apply()
+                showProfiles()
             }
             .setNegativeButton("Отмена", null)
             .show()
     }
 
-    private fun saveNames() {
-        getSharedPreferences("account_names", MODE_PRIVATE).edit()
-            .putStringSet("names", names.toSet()).apply()
-    }
-
-    private fun openLauncher(slot: Int) {
+    private fun openLauncher() {
         val intent = packageManager.getLaunchIntentForPackage("git.artdeell.mjlaunch")
         if (intent == null) {
             AlertDialog.Builder(this).setTitle("MJLauncher не найден")
@@ -259,7 +212,7 @@ class MainActivity : ComponentActivity() {
                 .setPositiveButton("OK", null).show()
             return
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(intent)
         } catch (_: Exception) {
@@ -270,38 +223,26 @@ class MainActivity : ComponentActivity() {
 
     private fun showSettings() {
         header("Настройки приложения")
-        val about = card()
-        about.addView(label("ВНЕШНИЙ ВИД", 11f, purple, true))
-        spacerIn(about, 8)
-        about.addView(label("Тёмная тема • Фиолетовые акценты • Masterme4a MultiVM", 14f))
-        content.addView(about)
-        spacer(14)
-        val accounts = card()
-        accounts.addView(label("УПРАВЛЕНИЕ ПРОФИЛЯМИ", 11f, purple, true))
-        spacerIn(accounts, 8)
-        if (names.isEmpty()) {
-            accounts.addView(label("Сохранённых никнеймов пока нет.", 13f, muted))
-        } else {
-            names.toList().forEach { name ->
-                val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-                row.addView(label(name, 14f), LinearLayout.LayoutParams(0, -2, 1f))
-                row.addView(button("Удалить", false) {
-                    names.remove(name)
-                    saveNames()
-                    showSettings()
-                })
-                accounts.addView(row)
-                spacerIn(accounts, 6)
-            }
-        }
-        content.addView(accounts)
+        val appearance = card()
+        appearance.addView(label("ВНЕШНИЙ ВИД", 11f, purple, true))
+        spacerIn(appearance, 8)
+        appearance.addView(label("Тёмная тема • Фиолетовые акценты • Masterme4a MultiVM", 14f))
+        content.addView(appearance)
         spacer(14)
         val info = card()
-        info.addView(label("О ПРОЕКТЕ", 11f, purple, true))
+        info.addView(label("УПРАВЛЕНИЕ АККАУНТАМИ", 11f, purple, true))
         spacerIn(info, 8)
-        info.addView(label("Версия интерфейса 0.3 • Android", 13f, white))
+        info.addView(label("Сохранённые никнеймы: ${names.count { it != null }} из 3", 14f))
         spacerIn(info, 6)
-        info.addView(label("Приложение определяет, открыто ли оно в личном или рабочем профиле Android. Установку MJLauncher в каждом профиле и независимый вход нужно проверить отдельно.", 12f, muted))
+        info.addView(label("Выбран слот ${selectedSlot + 1}. Для реального переключения авторизованного аккаунта используй меню аккаунтов MJLauncher.", 12f, muted))
         content.addView(info)
+        spacer(14)
+        val about = card()
+        about.addView(label("О ПРОЕКТЕ", 11f, purple, true))
+        spacerIn(about, 8)
+        about.addView(label("Интерфейс 0.4 • Три сохраняемых слота • Запоминание выбранного слота", 13f, white))
+        spacerIn(about, 6)
+        about.addView(label("Приложение не читает пароли, токены или приватные данные MJLauncher. Сохранение игры в памяти и подключение к серверу зависят от Android и самого Minecraft.", 12f, muted))
+        content.addView(about)
     }
 }
