@@ -4,316 +4,262 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.net.Uri
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.documentfile.provider.DocumentFile
-import java.io.File
-import java.net.URL
-import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
-    private val purple = Color.rgb(145, 72, 220)
-    private val dark = Color.rgb(24, 15, 39)
-    private val accounts = mutableListOf<String>()
-    private var activeAccount: String? = null
-    private val downloaded = mutableListOf<File>()
-    private val executor = Executors.newSingleThreadExecutor()
-    private lateinit var page: LinearLayout
-    private lateinit var accountList: LinearLayout
-    private lateinit var modsList: LinearLayout
-    private lateinit var status: TextView
-    private var modsFolderUri: Uri? = null
-
-    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: SecurityException) { }
-            modsFolderUri = uri
-            getSharedPreferences("mods", MODE_PRIVATE).edit().putString("folder", uri.toString()).apply()
-            if (::status.isInitialized) status.text = "Папка mods выбрана."
-        }
-    }
+    private val bg = Color.rgb(13, 10, 23)
+    private val panel = Color.rgb(29, 22, 43)
+    private val panel2 = Color.rgb(39, 29, 57)
+    private val purple = Color.rgb(157, 91, 255)
+    private val muted = Color.rgb(174, 163, 194)
+    private val white = Color.WHITE
+    private val names = mutableListOf<String>()
+    private lateinit var content: LinearLayout
+    private lateinit var profileRows: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        accounts.addAll(
-            getSharedPreferences("account_names", MODE_PRIVATE)
-                .getStringSet("names", emptySet())?.toList()?.sorted() ?: emptyList()
-        )
-        activeAccount = getSharedPreferences("account_names", MODE_PRIVATE)
-            .getString("active", null)?.takeIf { it in accounts }
-        modsFolderUri = getSharedPreferences("mods", MODE_PRIVATE)
-            .getString("folder", null)?.let { Uri.parse(it) }
-        val modsDir = getExternalFilesDir("mods")
-        if (modsDir != null) {
-            modsDir.mkdirs()
-            downloaded.addAll(modsDir.listFiles()?.filter { it.isFile && it.extension.equals("jar", true) } ?: emptyList())
-        }
-
-        page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(18, 18, 18, 18)
-            setBackgroundColor(dark)
-        }
-        page.addView(TextView(this).apply {
-            text = "MULTIACCOUNT\nCONNECT"
-            textSize = 26f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(8, 12, 8, 16)
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        tabs.addView(makeButton("Аккаунты") { showAccounts() }, LinearLayout.LayoutParams(0, -2, 1f))
-        tabs.addView(makeButton("Моды") { showMods() }, LinearLayout.LayoutParams(0, -2, 1f))
-        page.addView(tabs)
-        setContentView(page)
-        showAccounts()
+        names.addAll(getSharedPreferences("account_names", MODE_PRIVATE)
+            .getStringSet("names", emptySet())?.toList()?.sorted() ?: emptyList())
+        buildShell()
+        showProfiles()
     }
 
-    private fun makeButton(label: String, action: () -> Unit): Button {
-        return Button(this).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            backgroundTintList = ColorStateList.valueOf(purple)
+    private fun rounded(color: Int, radius: Float = 22f): GradientDrawable =
+        GradientDrawable().apply { setColor(color); cornerRadius = radius }
+
+    private fun label(text: String, size: Float, color: Int = white, bold: Boolean = false): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(color)
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+        }
+
+    private fun button(text: String, primary: Boolean = true, action: () -> Unit): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(white)
+            setPadding(18, 14, 18, 14)
+            background = rounded(if (primary) purple else panel2, 16f)
+            isClickable = true
+            isFocusable = true
             setOnClickListener { action() }
         }
+
+    private fun buildShell() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val scroll = ScrollView(this)
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 22, 20, 24)
+        }
+        scroll.addView(content)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(12, 10, 12, 14)
+            setBackgroundColor(Color.rgb(22, 17, 33))
+        }
+        nav.addView(button("Профили", true) { showProfiles() }, LinearLayout.LayoutParams(0, -2, 1f))
+        val gap = View(this)
+        nav.addView(gap, LinearLayout.LayoutParams(10, 1))
+        nav.addView(button("Настройки", false) { showSettings() }, LinearLayout.LayoutParams(0, -2, 1f))
+        root.addView(nav)
+        setContentView(root)
     }
 
-    private fun clearContent() {
-        if (page.childCount > 2) page.removeViews(2, page.childCount - 2)
+    private fun header(subtitle: String) {
+        content.removeAllViews()
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brand.addView(label("MASTERME4A", 12f, purple, true))
+        brand.addView(label("MultiVM", 30f, white, true))
+        brand.addView(label(subtitle, 13f, muted))
+        top.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        val badge = label("BETA", 11f, white, true).apply {
+            setPadding(12, 8, 12, 8)
+            background = rounded(Color.rgb(79, 48, 119), 30f)
+        }
+        top.addView(badge)
+        content.addView(top)
+        spacer(22)
     }
 
-    private fun showAccounts() {
-        clearContent()
-        page.addView(makeButton("+ Добавить никнейм") { addNickname() })
-        accountList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        page.addView(ScrollView(this).apply { addView(accountList) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        page.addView(TextView(this).apply {
-            text = "Попробуй открыть до трёх отдельных задач MJLauncher. Android и сам лаунчер могут объединять их в одно окно; отдельные аккаунты этим не создаются."
-            setTextColor(Color.LTGRAY)
-            textSize = 12f
-            setPadding(6, 10, 6, 8)
-        })
-        page.addView(makeButton("Запуск MJLauncher №1") { openLauncher(1) })
-        page.addView(makeButton("Запуск MJLauncher №2") { openLauncher(2) })
-        page.addView(makeButton("Запуск MJLauncher №3") { openLauncher(3) })
-        renderAccounts()
+    private fun spacer(height: Int) {
+        content.addView(View(this), LinearLayout.LayoutParams(1, height))
+    }
+
+    private fun sectionTitle(title: String, trailing: String? = null) {
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(label(title, 18f, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        if (trailing != null) row.addView(label(trailing, 12f, muted))
+        content.addView(row)
+        spacer(12)
+    }
+
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(16, 16, 16, 16)
+        background = rounded(panel)
+    }
+
+    private fun showProfiles() {
+        header("Три слота профилей Minecraft")
+        val summary = card()
+        summary.addView(label("ТВОИ ПРОФИЛИ", 11f, purple, true))
+        spacerIn(summary, 6)
+        summary.addView(label("Управляй никами и запускай MJLauncher.", 16f, white, true))
+        spacerIn(summary, 5)
+        summary.addView(label("Пока это отдельные карточки, а не изолированные копии лаунчера.", 12f, muted))
+        content.addView(summary)
+        spacer(22)
+        sectionTitle("Профили", "3 слота")
+        profileRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(profileRows)
+        renderProfiles()
+        spacer(16)
+        content.addView(button("+ Добавить никнейм", true) { addNickname() })
+        spacer(18)
+        val note = card()
+        note.addView(label("ВАЖНО О ЗАПУСКЕ", 11f, purple, true))
+        spacerIn(note, 7)
+        note.addView(label("Android пока открывает установленный MJLauncher как одно приложение. Кнопка запуска не создаёт отдельную копию и не разделяет данные аккаунтов.", 13f, muted))
+        content.addView(note)
+    }
+
+    private fun spacerIn(parent: LinearLayout, height: Int) {
+        parent.addView(View(this), LinearLayout.LayoutParams(1, height))
+    }
+
+    private fun renderProfiles() {
+        profileRows.removeAllViews()
+        for (slot in 1..3) {
+            val name = names.getOrNull(slot - 1)
+            val item = card()
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            val number = label("0$slot", 20f, purple, true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(Color.rgb(54, 37, 78), 15f)
+                setPadding(13, 12, 13, 12)
+            }
+            row.addView(number)
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 0, 0, 0)
+            }
+            info.addView(label(name ?: "Профиль не настроен", 15f, white, true))
+            info.addView(label(if (name == null) "Добавь никнейм в этот слот" else "Сохранённый никнейм", 12f, muted))
+            row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+            item.addView(row)
+            spacerIn(item, 14)
+            item.addView(button(if (name == null) "Добавить никнейм" else "Открыть MJLauncher", true) {
+                if (name == null) addNickname() else openLauncher(slot)
+            })
+            profileRows.addView(item)
+            if (slot != 3) spacer(12)
+        }
     }
 
     private fun addNickname() {
-        val input = EditText(this).apply { hint = "Minecraft nickname" }
-        AlertDialog.Builder(this).setTitle("Добавить никнейм").setView(input)
-            .setPositiveButton("Добавить") { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotEmpty() && name.length <= 32 && !accounts.contains(name)) {
-                    accounts.add(name)
-                    saveNames()
-                    renderAccounts()
-                }
-            }.setNegativeButton("Отмена", null).show()
-    }
-
-    private fun renderAccounts() {
-        accountList.removeAllViews()
-        if (accounts.isEmpty()) {
-            accountList.addView(TextView(this).apply {
-                text = "Список пока пуст. Добавь никнейм."
-                setTextColor(Color.WHITE)
-                setPadding(8, 20, 8, 20)
-            })
+        val input = EditText(this).apply {
+            hint = "Например, Player123"
+            setSingleLine(true)
         }
-        accounts.forEach { name ->
-            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            row.addView(TextView(this).apply {
-                text = if (name == activeAccount) "✓ $name (выбран)" else name
-                textSize = 16f
-                setTextColor(Color.WHITE)
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(makeButton(if (name == activeAccount) "Выбран" else "Выбрать") {
-                activeAccount = name
-                getSharedPreferences("account_names", MODE_PRIVATE).edit()
-                    .putString("active", name).apply()
-                renderAccounts()
-            })
-            row.addView(makeButton("Удалить") {
-                accounts.remove(name)
-                if (activeAccount == name) {
-                    activeAccount = accounts.firstOrNull()
-                    getSharedPreferences("account_names", MODE_PRIVATE).edit()
-                        .putString("active", activeAccount).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Добавить профиль")
+            .setMessage("Никнейм будет сохранён в карточке приложения.")
+            .setView(input)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val value = input.text.toString().trim()
+                if (value.isNotEmpty() && value.length <= 32 && !names.contains(value)) {
+                    if (names.size < 3) {
+                        names.add(value)
+                        saveNames()
+                        showProfiles()
+                    } else {
+                        AlertDialog.Builder(this).setMessage("Все три слота заняты. Удали никнейм в настройках, чтобы заменить его.")
+                            .setPositiveButton("OK", null).show()
+                    }
                 }
-                saveNames()
-                renderAccounts()
-            })
-            accountList.addView(row, ViewGroup.LayoutParams(-1, -2))
-        }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun saveNames() {
         getSharedPreferences("account_names", MODE_PRIVATE).edit()
-            .putStringSet("names", accounts.toSet()).apply()
+            .putStringSet("names", names.toSet()).apply()
     }
 
-    private fun showMods() {
-        clearContent()
-        status = TextView(this).apply {
-            text = "Загружай только моды из доверенных источников."
-            setTextColor(Color.LTGRAY)
-            textSize = 13f
-            setPadding(4, 8, 4, 8)
-        }
-        page.addView(status)
-        page.addView(makeButton("Выбрать папку mods") { folderPicker.launch(null) })
-        page.addView(makeButton("Скачать мод по HTTPS-ссылке (.jar)") { askDownloadUrl() })
-        page.addView(makeButton("Открыть каталог Modrinth") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://modrinth.com/mods")))
-        })
-        modsList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        page.addView(ScrollView(this).apply { addView(modsList) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        renderDownloads()
-    }
-
-    private fun askDownloadUrl() {
-        val input = EditText(this).apply {
-            hint = "https://site.example/mod.jar"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
-        }
-        AlertDialog.Builder(this).setTitle("Ссылка на JAR-мод")
-            .setMessage("Нужна прямая HTTPS-ссылка на файл .jar.")
-            .setView(input).setPositiveButton("Скачать") { _, _ ->
-                val link = input.text.toString().trim()
-                val path = link.substringBefore("?").substringBefore("#")
-                if (link.startsWith("https://", true) && path.endsWith(".jar", true)) {
-                    downloadJar(link)
-                } else {
-                    status.text = "Проверь ссылку: HTTPS и расширение .jar."
-                }
-            }.setNegativeButton("Отмена", null).show()
-    }
-
-    private fun downloadJar(link: String) {
-        status.text = "Загрузка началась…"
-        executor.execute {
-            try {
-                val connection = URL(link).openConnection()
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.setRequestProperty("User-Agent", "MultiAccountConnect/0.2")
-                connection.connect()
-                val length = connection.contentLengthLong
-                if (length > 100L * 1024L * 1024L) throw IllegalArgumentException("Файл больше 100 МБ")
-                val rawName = Uri.parse(link).lastPathSegment ?: "downloaded-mod.jar"
-                val safeName = rawName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                    .takeIf { it.endsWith(".jar", true) } ?: "downloaded-mod.jar"
-                val dest = File(getExternalFilesDir("mods") ?: filesDir, safeName)
-                connection.getInputStream().use { input ->
-                    dest.outputStream().use { output ->
-                        val buffer = ByteArray(8192)
-                        var total = 0L
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            total += count
-                            if (total > 100L * 1024L * 1024L) throw IllegalArgumentException("Файл больше 100 МБ")
-                            output.write(buffer, 0, count)
-                        }
-                    }
-                }
-                runOnUiThread {
-                    downloaded.removeAll { it.name == dest.name }
-                    downloaded.add(dest)
-                    status.text = "Скачано: " + dest.name
-                    renderDownloads()
-                }
-            } catch (e: Exception) {
-                runOnUiThread { status.text = "Не удалось скачать: " + (e.message ?: "ошибка сети") }
-            }
-        }
-    }
-
-    private fun renderDownloads() {
-        modsList.removeAllViews()
-        if (downloaded.isEmpty()) {
-            modsList.addView(TextView(this).apply {
-                text = "Скачанные моды появятся здесь."
-                setTextColor(Color.WHITE)
-                setPadding(6, 16, 6, 16)
-            })
-        }
-        downloaded.forEach { file ->
-            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            row.addView(TextView(this).apply {
-                text = file.name
-                setTextColor(Color.WHITE)
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(makeButton("В mods") { copyToMods(file) })
-            modsList.addView(row, ViewGroup.LayoutParams(-1, -2))
-        }
-    }
-
-    private fun copyToMods(file: File) {
-        val uri = modsFolderUri
-        if (uri == null) {
-            status.text = "Сначала выбери папку mods."
-            return
-        }
-        try {
-            val root = DocumentFile.fromTreeUri(this, uri)
-            val target = root?.findFile(file.name) ?: root?.createFile("application/java-archive", file.name)
-            if (target == null) {
-                status.text = "Не удалось создать файл в выбранной папке."
-                return
-            }
-            contentResolver.openOutputStream(target.uri, "wt")?.use { output ->
-                file.inputStream().use { input -> input.copyTo(output) }
-            }
-            status.text = "Скопировано: " + file.name
-        } catch (e: Exception) {
-            status.text = "Ошибка копирования: " + (e.message ?: "ошибка")
-        }
-    }
-
-    private fun openLauncher(instance: Int) {
-        val packageName = "git.artdeell.mjlaunch"
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
+    private fun openLauncher(slot: Int) {
+        val intent = packageManager.getLaunchIntentForPackage("git.artdeell.mjlaunch")
         if (intent == null) {
-            showLauncherNotFound()
+            AlertDialog.Builder(this).setTitle("MJLauncher не найден")
+                .setMessage("Установи MJLauncher из Google Play и попробуй снова.")
+                .setPositiveButton("OK", null).show()
             return
         }
-
-        // Request a separate Android task. The target app may still reuse its existing activity.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         try {
             startActivity(intent)
         } catch (_: Exception) {
-            AlertDialog.Builder(this)
-                .setTitle("Не удалось открыть MJLauncher")
-                .setMessage("Android не разрешил создать задачу №$instance. Попробуй открыть MJLauncher вручную.")
-                .setPositiveButton("OK", null)
-                .show()
+            AlertDialog.Builder(this).setMessage("Не удалось открыть MJLauncher.")
+                .setPositiveButton("OK", null).show()
         }
     }
 
-    private fun showLauncherNotFound() {
-        AlertDialog.Builder(this)
-            .setTitle("MJLauncher не найден")
-            .setMessage("Установи MJLauncher и попробуй снова. Приложение ищет лаунчер по названию установленного приложения.")
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    override fun onDestroy() {
-        executor.shutdownNow()
-        super.onDestroy()
+    private fun showSettings() {
+        header("Настройки приложения")
+        val about = card()
+        about.addView(label("ВНЕШНИЙ ВИД", 11f, purple, true))
+        spacerIn(about, 8)
+        about.addView(label("Тёмная тема • Фиолетовые акценты • Masterme4a MultiVM", 14f))
+        content.addView(about)
+        spacer(14)
+        val accounts = card()
+        accounts.addView(label("УПРАВЛЕНИЕ ПРОФИЛЯМИ", 11f, purple, true))
+        spacerIn(accounts, 8)
+        if (names.isEmpty()) {
+            accounts.addView(label("Сохранённых никнеймов пока нет.", 13f, muted))
+        } else {
+            names.toList().forEach { name ->
+                val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                row.addView(label(name, 14f), LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(button("Удалить", false) {
+                    names.remove(name)
+                    saveNames()
+                    showSettings()
+                })
+                accounts.addView(row)
+                spacerIn(accounts, 6)
+            }
+        }
+        content.addView(accounts)
+        spacer(14)
+        val info = card()
+        info.addView(label("О ПРОЕКТЕ", 11f, purple, true))
+        spacerIn(info, 8)
+        info.addView(label("Версия интерфейса 0.3 • Android", 13f, white))
+        spacerIn(info, 6)
+        info.addView(label("Функция настоящей изоляции данных MJLauncher находится в разработке и ещё не подтверждена на этом устройстве.", 12f, muted))
+        content.addView(info)
     }
 }
