@@ -98,7 +98,15 @@ class MainActivity : ComponentActivity() {
         page.addView(makeButton("+ Добавить никнейм") { addNickname() })
         accountList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(ScrollView(this).apply { addView(accountList) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        page.addView(makeButton("Запустить MJLauncher") { openLauncher() })
+        page.addView(TextView(this).apply {
+            text = "Попробуй открыть до трёх отдельных задач MJLauncher. Android и сам лаунчер могут объединять их в одно окно; отдельные аккаунты этим не создаются."
+            setTextColor(Color.LTGRAY)
+            textSize = 12f
+            setPadding(6, 10, 6, 8)
+        })
+        page.addView(makeButton("Запуск MJLauncher №1") { openLauncher(1) })
+        page.addView(makeButton("Запуск MJLauncher №2") { openLauncher(2) })
+        page.addView(makeButton("Запуск MJLauncher №3") { openLauncher(3) })
         renderAccounts()
     }
 
@@ -275,35 +283,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openLauncher() {
-        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val matches = packageManager.queryIntentActivities(launcherIntent, 0)
-            .mapNotNull { info ->
-                val label = info.loadLabel(packageManager)?.toString() ?: return@mapNotNull null
-                val normalized = label.lowercase().replace(" ", "")
-                if (normalized.contains("mjlauncher")) {
-                    label to info.activityInfo.packageName
-                } else null
-            }
-            .distinctBy { it.second }
+    private fun openLauncher(instance: Int) {
+        val packageName = "git.artdeell.mjlaunch"
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent == null) {
+            showLauncherNotFound()
+            return
+        }
 
-        when {
-            matches.size == 1 -> {
-                val intent = packageManager.getLaunchIntentForPackage(matches[0].second)
-                if (intent != null) startActivity(intent) else showLauncherNotFound()
-            }
-            matches.size > 1 -> {
-                AlertDialog.Builder(this)
-                    .setTitle("Выбери MJLauncher")
-                    .setItems(matches.map { it.first }.toTypedArray()) { _, which ->
-                        packageManager.getLaunchIntentForPackage(matches[which].second)?.let {
-                            startActivity(it)
-                        } ?: showLauncherNotFound()
-                    }
-                    .setNegativeButton("Отмена", null)
-                    .show()
-            }
-            else -> showLauncherNotFound()
+        // Request a separate Android task. The target app may still reuse its existing activity.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            AlertDialog.Builder(this)
+                .setTitle("Не удалось открыть MJLauncher")
+                .setMessage("Android не разрешил создать задачу №$instance. Попробуй открыть MJLauncher вручную.")
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 
