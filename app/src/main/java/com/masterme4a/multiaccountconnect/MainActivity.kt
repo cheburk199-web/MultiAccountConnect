@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
     private val purple = Color.rgb(145, 72, 220)
     private val dark = Color.rgb(24, 15, 39)
     private val accounts = mutableListOf<String>()
+    private var activeAccount: String? = null
     private val downloaded = mutableListOf<File>()
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var page: LinearLayout
@@ -48,6 +49,8 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("account_names", MODE_PRIVATE)
                 .getStringSet("names", emptySet())?.toList()?.sorted() ?: emptyList()
         )
+        activeAccount = getSharedPreferences("account_names", MODE_PRIVATE)
+            .getString("active", null)?.takeIf { it in accounts }
         modsFolderUri = getSharedPreferences("mods", MODE_PRIVATE)
             .getString("folder", null)?.let { Uri.parse(it) }
         val modsDir = getExternalFilesDir("mods")
@@ -124,12 +127,23 @@ class MainActivity : ComponentActivity() {
         accounts.forEach { name ->
             val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
             row.addView(TextView(this).apply {
-                text = name
-                textSize = 17f
+                text = if (name == activeAccount) "✓ $name (выбран)" else name
+                textSize = 16f
                 setTextColor(Color.WHITE)
             }, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(makeButton(if (name == activeAccount) "Выбран" else "Выбрать") {
+                activeAccount = name
+                getSharedPreferences("account_names", MODE_PRIVATE).edit()
+                    .putString("active", name).apply()
+                renderAccounts()
+            })
             row.addView(makeButton("Удалить") {
                 accounts.remove(name)
+                if (activeAccount == name) {
+                    activeAccount = accounts.firstOrNull()
+                    getSharedPreferences("account_names", MODE_PRIVATE).edit()
+                        .putString("active", activeAccount).apply()
+                }
                 saveNames()
                 renderAccounts()
             })
@@ -262,6 +276,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openLauncher() {
+        if (activeAccount == null) {
+            AlertDialog.Builder(this)
+                .setMessage("Сначала добавь и выбери профиль Minecraft. Пока это локальный профиль, не вход в Microsoft.")
+                .setPositiveButton("OK", null).show()
+            return
+        }
         val packages = listOf("net.kdt.pojavlaunch", "com.movtery.launcher")
         for (pkg in packages) {
             packageManager.getLaunchIntentForPackage(pkg)?.let {
