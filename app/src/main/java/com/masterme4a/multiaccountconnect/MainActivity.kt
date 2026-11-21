@@ -24,15 +24,15 @@ class MainActivity : ComponentActivity() {
     private val white = Color.WHITE
     private val prefs by lazy { getSharedPreferences("multivm_profiles", MODE_PRIVATE) }
     private val launcherPackage = "git.artdeell.mjlaunch"
-    private val names = MutableList<String?>(3) { null }
+    private val names = MutableList<String?>(5) { null }
     private var selectedSlot = 0
     private lateinit var content: LinearLayout
     private lateinit var profileRows: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        for (i in 0..2) names[i] = prefs.getString("slot_${i + 1}", null)
-        selectedSlot = prefs.getInt("selected_slot", 0).coerceIn(0, 2)
+        for (i in 0..4) names[i] = prefs.getString("slot_${i + 1}", null)
+        selectedSlot = prefs.getInt("selected_slot", 0).coerceIn(0, 4)
         buildShell()
         showProfiles()
     }
@@ -120,9 +120,7 @@ class MainActivity : ComponentActivity() {
         spacerIn(summary, 5)
         summary.addView(label("Выбор здесь сохраняет никнейм и слот. Сам вход Microsoft/Ely.by меняется внутри MJLauncher.", 12f, muted))
         spacerIn(summary, 12)
-        summary.addView(button("АККАУНТ 1 • Обычный MJLauncher", true) { openLauncher() })
-        spacerIn(summary, 9)
-        summary.addView(button("АККАУНТ 2 • MJLauncher в Island", false) { openWorkLauncher() })
+        summary.addView(button("ЗАПУСТИТЬ ВЫБРАННЫЙ АККАУНТ", true) { launchSelected() })
         content.addView(summary)
         spacer(20)
         val env = card()
@@ -140,7 +138,7 @@ class MainActivity : ComponentActivity() {
         content.addView(env)
         spacer(20)
         val title = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        title.addView(label("Три профиля", 18f, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        title.addView(label("Пять аккаунтов", 18f, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         title.addView(label("Слот ${selectedSlot + 1} выбран", 12f, muted))
         content.addView(title)
         spacer(12)
@@ -158,7 +156,7 @@ class MainActivity : ComponentActivity() {
 
     private fun renderProfiles() {
         profileRows.removeAllViews()
-        for (slot in 0..2) {
+        for (slot in 0..4) {
             val name = names[slot]
             val active = slot == selectedSlot
             val item = card()
@@ -185,7 +183,7 @@ class MainActivity : ComponentActivity() {
                 LinearLayout.LayoutParams(0, -2, 1f))
             item.addView(actions)
             profileRows.addView(item)
-            if (slot < 2) spacer(10)
+            if (slot < 4) spacer(10)
         }
     }
 
@@ -208,6 +206,18 @@ class MainActivity : ComponentActivity() {
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun launchSelected() {
+        when (selectedSlot) {
+            0 -> openLauncher()
+            1 -> openWorkLauncher()
+            else -> AlertDialog.Builder(this)
+                .setTitle("Аккаунт ${selectedSlot + 1} пока не подключён")
+                .setMessage("Слот и никнейм уже можно сохранить. Для запуска нужен отдельный профиль Android с установленным MJLauncher. Сейчас подтверждены только обычный профиль и Island.")
+                .setPositiveButton("Понятно", null)
+                .show()
+        }
     }
 
     private fun openLauncher() {
@@ -276,7 +286,7 @@ class MainActivity : ComponentActivity() {
         val info = card()
         info.addView(label("УПРАВЛЕНИЕ АККАУНТАМИ", 11f, purple, true))
         spacerIn(info, 8)
-        info.addView(label("Сохранённые никнеймы: ${names.count { it != null }} из 3", 14f))
+        info.addView(label("Сохранённые никнеймы: ${names.count { it != null }} из 5", 14f))
         spacerIn(info, 6)
         info.addView(label("Выбран слот ${selectedSlot + 1}. Для реального переключения авторизованного аккаунта используй меню аккаунтов MJLauncher.", 12f, muted))
         content.addView(info)
@@ -284,7 +294,7 @@ class MainActivity : ComponentActivity() {
         val about = card()
         about.addView(label("О ПРОЕКТЕ", 11f, purple, true))
         spacerIn(about, 8)
-        about.addView(label("Интерфейс 0.4 • Три сохраняемых слота • Запоминание выбранного слота", 13f, white))
+        about.addView(label("Интерфейс 0.5 • Пять сохраняемых слотов • Запоминание выбранного слота", 13f, white))
         spacerIn(about, 6)
         about.addView(label("Приложение не читает пароли, токены или приватные данные MJLauncher. Сохранение игры в памяти и подключение к серверу зависят от Android и самого Minecraft.", 12f, muted))
         content.addView(about)
