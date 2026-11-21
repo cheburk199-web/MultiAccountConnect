@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.UserManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -130,6 +131,8 @@ class MainActivity : ComponentActivity() {
         spacerIn(summary, 5)
         summary.addView(label("Пока это отдельные карточки, а не изолированные копии лаунчера.", 12f, muted))
         content.addView(summary)
+        spacer(12)
+        content.addView(environmentCard())
         spacer(22)
         sectionTitle("Профили", "3 слота")
         profileRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -143,6 +146,45 @@ class MainActivity : ComponentActivity() {
         spacerIn(note, 7)
         note.addView(label("Android пока открывает установленный MJLauncher как одно приложение. Кнопка запуска не создаёт отдельную копию и не разделяет данные аккаунтов.", 13f, muted))
         content.addView(note)
+    }
+
+    private fun environmentCard(): LinearLayout {
+        val card = card()
+        val managed = try {
+            (getSystemService(USER_SERVICE) as UserManager).isManagedProfile
+        } catch (_: Exception) {
+            false
+        }
+        val launcherInstalled = try {
+            @Suppress("DEPRECATION")
+            packageManager.getApplicationInfo("git.artdeell.mjlaunch", 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        card.addView(label("ТЕКУЩАЯ СРЕДА ANDROID", 11f, purple, true))
+        spacerIn(card, 7)
+        card.addView(label(if (managed) "Рабочий профиль" else "Личный профиль", 16f, white, true))
+        spacerIn(card, 4)
+        card.addView(label(
+            if (launcherInstalled) "MJLauncher установлен в этой среде." else "MJLauncher не найден в этой среде.",
+            12f, muted
+        ))
+        spacerIn(card, 10)
+        card.addView(button("Как включить второй профиль", false) {
+            AlertDialog.Builder(this)
+                .setTitle("Второй экземпляр MJLauncher")
+                .setMessage(
+                    "Для отдельного хранилища нужен рабочий профиль Android. " +
+                    "Его можно попробовать создать через Shelter или Island, если устройство разрешает рабочие профили. " +
+                    "Затем установи MJLauncher и Masterme4a MultiVM внутри рабочего профиля. " +
+                    "Открой это приложение в каждом профиле: личный и рабочий профили будут иметь отдельные данные. " +
+                    "Это даст максимум два проверяемых окружения, а не три. Возможность одновременного запуска зависит от Android и памяти телефона."
+                )
+                .setPositiveButton("Понятно", null)
+                .show()
+        })
+        return card
     }
 
     private fun spacerIn(parent: LinearLayout, height: Int) {
@@ -259,7 +301,7 @@ class MainActivity : ComponentActivity() {
         spacerIn(info, 8)
         info.addView(label("Версия интерфейса 0.3 • Android", 13f, white))
         spacerIn(info, 6)
-        info.addView(label("Функция настоящей изоляции данных MJLauncher находится в разработке и ещё не подтверждена на этом устройстве.", 12f, muted))
+        info.addView(label("Приложение определяет, открыто ли оно в личном или рабочем профиле Android. Установку MJLauncher в каждом профиле и независимый вход нужно проверить отдельно.", 12f, muted))
         content.addView(info)
     }
 }
