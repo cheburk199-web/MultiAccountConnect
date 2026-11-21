@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
         page.addView(makeButton("+ Добавить никнейм") { addNickname() })
         accountList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(ScrollView(this).apply { addView(accountList) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        page.addView(makeButton("Открыть Pojav / Amethyst") { openLauncher() })
+        page.addView(makeButton("Запустить MJLauncher") { openLauncher() })
         renderAccounts()
     }
 
@@ -276,22 +276,43 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openLauncher() {
-        if (activeAccount == null) {
-            AlertDialog.Builder(this)
-                .setMessage("Сначала добавь и выбери профиль Minecraft. Пока это локальный профиль, не вход в Microsoft.")
-                .setPositiveButton("OK", null).show()
-            return
-        }
-        val packages = listOf("net.kdt.pojavlaunch", "com.movtery.launcher")
-        for (pkg in packages) {
-            packageManager.getLaunchIntentForPackage(pkg)?.let {
-                startActivity(it)
-                return
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val matches = packageManager.queryIntentActivities(launcherIntent, 0)
+            .mapNotNull { info ->
+                val label = info.loadLabel(packageManager)?.toString() ?: return@mapNotNull null
+                val normalized = label.lowercase().replace(" ", "")
+                if (normalized.contains("mjlauncher")) {
+                    label to info.activityInfo.packageName
+                } else null
             }
+            .distinctBy { it.second }
+
+        when {
+            matches.size == 1 -> {
+                val intent = packageManager.getLaunchIntentForPackage(matches[0].second)
+                if (intent != null) startActivity(intent) else showLauncherNotFound()
+            }
+            matches.size > 1 -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Выбери MJLauncher")
+                    .setItems(matches.map { it.first }.toTypedArray()) { _, which ->
+                        packageManager.getLaunchIntentForPackage(matches[which].second)?.let {
+                            startActivity(it)
+                        } ?: showLauncherNotFound()
+                    }
+                    .setNegativeButton("Отмена", null)
+                    .show()
+            }
+            else -> showLauncherNotFound()
         }
+    }
+
+    private fun showLauncherNotFound() {
         AlertDialog.Builder(this)
-            .setMessage("Pojav / Amethyst не найден. Открой лаунчер вручную.")
-            .setPositiveButton("OK", null).show()
+            .setTitle("MJLauncher не найден")
+            .setMessage("Установи MJLauncher и попробуй снова. Приложение ищет лаунчер по названию установленного приложения.")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     override fun onDestroy() {
