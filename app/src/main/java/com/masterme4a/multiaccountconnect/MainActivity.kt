@@ -275,36 +275,93 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Multi-instance manager.
+     * Android cannot launch two isolated copies of one package in the same user profile.
+     * This screen manages separately installed clone packages (e.g. system Dual Apps /
+     * Work Profile clones) and launches each package independently.
+     */
     private fun openLauncher() {
+        val prefs = getSharedPreferences("instances", MODE_PRIVATE)
+        val saved = prefs.getStringSet("packages", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val pm = packageManager
         val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val matches = packageManager.queryIntentActivities(launcherIntent, 0)
+        val candidates = pm.queryIntentActivities(launcherIntent, 0)
             .mapNotNull { info ->
-                val label = info.loadLabel(packageManager)?.toString() ?: return@mapNotNull null
-                val normalized = label.lowercase().replace(" ", "")
-                if (normalized.contains("mjlauncher")) {
-                    label to info.activityInfo.packageName
+                val label = info.loadLabel(pm)?.toString() ?: return@mapNotNull null
+                val pkg = info.activityInfo.packageName
+                val key = (label + " " + pkg).lowercase()
+                if (key.contains("mjlauncher") || key.contains("pojav") ||
+                    key.contains("amethyst") || key.contains("minecraft")) {
+                    label to pkg
                 } else null
             }
             .distinctBy { it.second }
+            .sortedBy { it.first.lowercase() }
 
-        when {
-            matches.size == 1 -> {
-                val intent = packageManager.getLaunchIntentForPackage(matches[0].second)
-                if (intent != null) startActivity(intent) else showLauncherNotFound()
-            }
-            matches.size > 1 -> {
+        val rows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 8)
+        }
+        val explanation = TextView(this).apply {
+            text = "Здесь можно запускать отдельно установленные копии лаунчера. " +
+                "Чтобы получить вторую независимую копию, сначала клонируй MJLauncher через " +
+                "«Двойные приложения», «Клонирование приложений» или рабочий профиль Android. " +
+                "Обычный запуск одного package второй независимый экземпляр не создаёт."
+            setTextColor(Color.DKGRAY)
+            textSize = 14f
+            setPadding(0, 0, 0, 12)
+        }
+        rows.addView(explanation)
+        saved.forEach { pkg ->
+            val label = candidates.firstOrNull { it.second == pkg }?.first ?: pkg
+            rows.addView(makeButton("Запустить: $label") {
+                val launch = pm.getLaunchIntentForPackage(pkg)
+                if (launch != null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+                    try {
+                        startActivity(launch)
+                    } catch (_: Exception) {
+                        showLauncherNotFound()
+                    }
+                } else {
+                    Toast.makeText(this, "Эта копия больше не установлена", Toast.LENGTH_LONG).show()
+                    saved.remove(pkg)
+                    prefs.edit().putStringSet("packages", saved).apply()
+                }
+            })
+            rows.addView(makeButton("Убрать из списка: $label") {
+                saved.remove(pkg)
+                prefs.edit().putStringSet("packages", saved).apply()
+                openLauncher()
+            })
+        }
+        rows.addView(makeButton("+ Добавить установленную копию") {
+            val available = candidates.filter { it.second !in saved }
+            if (available.isEmpty()) {
                 AlertDialog.Builder(this)
-                    .setTitle("Выбери MJLauncher")
-                    .setItems(matches.map { it.first }.toTypedArray()) { _, which ->
-                        packageManager.getLaunchIntentForPackage(matches[which].second)?.let {
-                            startActivity(it)
-                        } ?: showLauncherNotFound()
+                    .setTitle("Других копий не найдено")
+                    .setMessage("Сначала установи отдельный клон лаунчера средствами Android (Dual Apps / рабочий профиль) или установи второй launcher-клон с отдельным package name. MultiAccountConnect не клонирует APK и не копирует данные авторизации.")
+                    .setPositiveButton("Понятно", null)
+                    .show()
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Выбери установленную копию")
+                    .setItems(available.map { "${it.first}  •  ${it.second}" }.toTypedArray()) { _, which ->
+                        saved.add(available[which].second)
+                        prefs.edit().putStringSet("packages", saved).apply()
+                        openLauncher()
                     }
                     .setNegativeButton("Отмена", null)
                     .show()
             }
-            else -> showLauncherNotFound()
-        }
+        })
+        rows.addView(makeButton("Обновить список приложений") { openLauncher() })
+        AlertDialog.Builder(this)
+            .setTitle("Multi-instance • копии лаунчера")
+            .setView(ScrollView(this).apply { addView(rows) })
+            .setPositiveButton("Закрыть", null)
+            .show()
     }
 
     private fun showLauncherNotFound() {
